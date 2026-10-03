@@ -1,0 +1,75 @@
+name: NetAI Browser APK Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository'yi indir
+        uses: actions/checkout@v4
+
+      - name: ZIP dosyasını bul ve aç
+        run: |
+          set -e
+
+          ZIP=$(find . -maxdepth 1 -type f -name '*.zip' | head -n 1)
+
+          if [ -z "$ZIP" ]; then
+            echo "HATA: Repo kökünde ZIP dosyası bulunamadı."
+            exit 1
+          fi
+
+          echo "ZIP: $ZIP"
+
+          rm -rf _proj
+          mkdir -p _proj
+
+          unzip -oq "$ZIP" -d _proj
+
+          SETTINGS=$(find _proj \
+            \( -name 'settings.gradle.kts' -o -name 'settings.gradle' \) \
+            -print -quit)
+
+          if [ -z "$SETTINGS" ]; then
+            echo "HATA: ZIP içerisinde Gradle Android projesi bulunamadı."
+            find _proj -maxdepth 3 -type f | head -100
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$SETTINGS")
+
+          echo "Android proje klasörü:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 8.10.2 kur
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: APK derle
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          gradle assembleDebug --stacktrace --no-daemon
+
+      - name: APK'yı yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetAI-Browser-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
